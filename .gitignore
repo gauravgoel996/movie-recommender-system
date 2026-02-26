@@ -1,6 +1,5 @@
 DataSets/
 .ipynb_checkpoints/
-*.pkl
 .env
 venv/
 .idea/
