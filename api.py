@@ -4,7 +4,7 @@ import bz2
 import requests
 import pandas as pd
 import numpy as np
-
+from pathlib import Path # Add this import
 
 # Initialize the API
 app = FastAPI(title="Movie Recommender API")
@@ -13,18 +13,28 @@ app = FastAPI(title="Movie Recommender API")
 # LOAD ALL DATA (Runs once when the server starts)
 # =====================================================================
 try:
-    cbf_movies = pickle.load(open('models/content-based-models/movie_list.pkl', 'rb'))
-    with bz2.BZ2File('models/content-based-models/similarity.pkl.bz2', 'rb') as f:
+    # Get the absolute path to the directory where api.py is located
+    BASE_DIR = Path(__file__).parent
+    
+    # Construct bulletproof paths to the models folder
+    MODELS_DIR = BASE_DIR / 'models'
+    CBF_DIR = MODELS_DIR / 'content-based-models'
+    UBCF_DIR = MODELS_DIR / 'user-based-models'
+
+    # Load Data
+    cbf_movies = pickle.load(open(CBF_DIR / 'movie_list.pkl', 'rb'))
+    with bz2.BZ2File(CBF_DIR / 'similarity.pkl.bz2', 'rb') as f:
         cbf_similarity = pickle.load(f)
 
-    user_item_matrix = pickle.load(open('models/user-based-models/user_item_matrix.pkl', 'rb'))
-    user_item_matrix_norm = pickle.load(open('models/user-based-models/user_item_matrix_norm.pkl', 'rb'))
-    user_means = pickle.load(open('models/user-based-models/user_means.pkl', 'rb'))
-    user_similarity_df = pickle.load(open('models/user-based-models/user_similarity.pkl', 'rb'))
-    ubcf_movies_df = pickle.load(open('models/user-based-models/ubcf_movies.pkl', 'rb'))
-except FileNotFoundError:
-    print("Error: Model files not found. Check your 'models/' directory.")
-
+    user_item_matrix = pickle.load(open(UBCF_DIR / 'user_item_matrix.pkl', 'rb'))
+    user_item_matrix_norm = pickle.load(open(UBCF_DIR / 'user_item_matrix_norm.pkl', 'rb'))
+    user_means = pickle.load(open(UBCF_DIR / 'user_means.pkl', 'rb'))
+    user_similarity_df = pickle.load(open(UBCF_DIR / 'user_similarity.pkl', 'rb'))
+    ubcf_movies_df = pickle.load(open(UBCF_DIR / 'ubcf_movies.pkl', 'rb'))
+    
+except FileNotFoundError as e:
+    print(f"Error: Model files not found. Expected them at: {MODELS_DIR}")
+    print(f"Details: {e}")
 
 # =====================================================================
 # SHARED UTILITY
@@ -129,6 +139,53 @@ def recommend_hybrid(user_id: int, num_recs: int = 10):
         })
 
     return {"anchor_movie": seed_movie_title, "recommendations": results}
+
+
+@app.get("/movies")
+def get_all_movies():
+    """Returns a list of all movie titles for the App dropdown."""
+    return cbf_movies['title'].tolist()
+
+@app.get("/users")
+def get_all_users():
+    """Returns a list of all valid User IDs for the App dropdown."""
+    return [int(u) for u in user_similarity_df.index.tolist()]
+
+@app.get("/recommend/user")
+def recommend_user(user_id: int, num_recs: int = 10):
+    """Android app asks for User-Based recommendations."""
+    if user_id not in user_similarity_df.index:
+        raise HTTPException(status_code=404, detail="User ID not found")
+    
+    target_mean = user_means[user_id]
+    target_user_movies = user_item_matrix.loc[user_id].dropna().index
+    similar_users = user_similarity_df[user_id].sort_values(ascending=False)[1:16]
+    similar_users = similar_users[similar_users > 0]
+
+    if similar_users.empty:
+        raise HTTPException(status_code=400, detail="Not enough similar users.")
+
+    neighbors_norm_ratings = user_item_matrix_norm.loc[similar_users.index].drop(columns=target_user_movies, errors='ignore')
+    neighbors_raw_ratings = user_item_matrix.loc[similar_users.index].drop(columns=target_user_movies, errors='ignore')
+    weights = similar_users.values
+
+    weighted_norm_ratings = neighbors_norm_ratings.fillna(0).multiply(weights, axis=0).sum(axis=0)
+    sum_of_weights = neighbors_raw_ratings.notna().multiply(weights, axis=0).sum(axis=0)
+    cf_predictions = (target_mean + (weighted_norm_ratings / sum_of_weights.replace(0, np.nan))).dropna()
+
+    top_ml_ids = cf_predictions.sort_values(ascending=False).head(num_recs).index
+    recs = ubcf_movies_df.set_index('movieId').loc[top_ml_ids].reset_index()
+
+    results = []
+    for _, row in recs.iterrows():
+        tmdb_id = int(row['tmdbId']) if pd.notna(row['tmdbId']) else None
+        results.append({
+            "title": str(row['title']),
+            "tmdb_id": tmdb_id,
+            "poster_url": fetch_poster(tmdb_id) if tmdb_id else "https://via.placeholder.com/500x750?text=No+Image+Found"
+        })
+
+    return {"user_id": user_id, "recommendations": results}
 
 
 # =====================================================================

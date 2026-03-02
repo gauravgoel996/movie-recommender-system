@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import numpy as np
+from pathlib import Path  # Add this import
 
 # Must be the very first Streamlit command
 st.set_page_config(page_title="Movie Recommender", layout="wide", page_icon="🍿")
@@ -55,18 +56,27 @@ def display_movie_grid(recommendations_df, items_per_row=5):
 # =====================================================================
 @st.cache_resource
 def load_all_data():
-    """Loads all models into memory at startup."""
+    """Loads all models into memory at startup using absolute paths."""
+    
+    # Get the absolute path to the directory where app.py is located
+    BASE_DIR = Path(__file__).parent
+    
+    # Construct bulletproof paths to the models folder
+    MODELS_DIR = BASE_DIR / 'models'
+    CBF_DIR = MODELS_DIR / 'content-based-models'
+    UBCF_DIR = MODELS_DIR / 'user-based-models'
+
     # Content-Based Data
-    cbf_movies = pickle.load(open('models/content-based-models/movie_list.pkl', 'rb'))
-    with bz2.BZ2File('models/content-based-models/similarity.pkl.bz2', 'rb') as f:
+    cbf_movies = pickle.load(open(CBF_DIR / 'movie_list.pkl', 'rb'))
+    with bz2.BZ2File(CBF_DIR / 'similarity.pkl.bz2', 'rb') as f:
         cbf_similarity = pickle.load(f)
 
     # User-Based Data
-    user_item_matrix = pickle.load(open('models/user-based-models/user_item_matrix.pkl', 'rb'))
-    user_item_matrix_norm = pickle.load(open('models/user-based-models/user_item_matrix_norm.pkl', 'rb'))
-    user_means = pickle.load(open('models/user-based-models/user_means.pkl', 'rb'))
-    user_similarity_df = pickle.load(open('models/user-based-models/user_similarity.pkl', 'rb'))
-    ubcf_movies_df = pickle.load(open('models/user-based-models/ubcf_movies.pkl', 'rb'))
+    user_item_matrix = pickle.load(open(UBCF_DIR / 'user_item_matrix.pkl', 'rb'))
+    user_item_matrix_norm = pickle.load(open(UBCF_DIR / 'user_item_matrix_norm.pkl', 'rb'))
+    user_means = pickle.load(open(UBCF_DIR / 'user_means.pkl', 'rb'))
+    user_similarity_df = pickle.load(open(UBCF_DIR / 'user_similarity.pkl', 'rb'))
+    ubcf_movies_df = pickle.load(open(UBCF_DIR / 'ubcf_movies.pkl', 'rb'))
 
     return cbf_movies, cbf_similarity, user_item_matrix, user_item_matrix_norm, user_means, user_similarity_df, ubcf_movies_df
 
