@@ -1,2 +1,0 @@
-go to the path where the app.py is then
-run command: streamlit run app.py
