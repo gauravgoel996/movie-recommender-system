@@ -88,9 +88,21 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     // Our three different screens
     final tabs = [
-      RecommendationView(type: 'content', optionsList: _movieTitles),
-      RecommendationView(type: 'user', optionsList: _userIds),
-      RecommendationView(type: 'hybrid', optionsList: _userIds),
+      RecommendationView(
+        key: const ValueKey('content'),
+        type: 'content',
+        optionsList: _movieTitles,
+      ),
+      RecommendationView(
+        key: const ValueKey('user'),
+        type: 'user',
+        optionsList: _userIds,
+      ),
+      RecommendationView(
+        key: const ValueKey('hybrid'),
+        type: 'hybrid',
+        optionsList: _userIds,
+      ),
     ];
 
     return Scaffold(
@@ -220,7 +232,7 @@ class _RecommendationViewState extends State<RecommendationView> {
                   child: Autocomplete<String>(
                     optionsBuilder: (TextEditingValue textEditingValue) {
                       if (textEditingValue.text.isEmpty) {
-                        return const Iterable<String>.empty();
+                        return widget.optionsList;
                       }
                       return widget.optionsList.where((String option) {
                         return option.toLowerCase().contains(
